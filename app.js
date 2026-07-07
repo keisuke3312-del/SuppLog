@@ -1,5 +1,6 @@
-const STORAGE_KEY = "supplog-v2";
-const OLD_STORAGE_KEY = "supplement-stock-v1";
+const APP_VERSION = "v3.0.0";
+const STORAGE_KEY = "supplog-v3";
+const MIGRATION_KEYS = ["supplog-v2", "supplement-stock-v1"];
 
 const defaultItems = [
   {
@@ -45,22 +46,39 @@ const defaultItems = [
 
 let items = loadItems();
 let selectedId = null;
+let screen = "list";
+let detailMode = "view";
 
 function loadItems() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return JSON.parse(saved);
+  if (saved) return normalizeItems(JSON.parse(saved));
 
-  const oldSaved = localStorage.getItem(OLD_STORAGE_KEY);
-  if (oldSaved) {
-    const migrated = JSON.parse(oldSaved).map(item => ({
-      ...item,
-      category: item.category || inferCategory(item.name)
-    }));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-    return migrated;
+  for (const key of MIGRATION_KEYS) {
+    const oldSaved = localStorage.getItem(key);
+    if (oldSaved) {
+      const migrated = normalizeItems(JSON.parse(oldSaved));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      return migrated;
+    }
   }
 
   return structuredClone(defaultItems);
+}
+
+function normalizeItems(raw) {
+  return raw.map(item => ({
+    id: item.id || crypto.randomUUID(),
+    name: item.name || "未名称",
+    category: item.category || inferCategory(item.name),
+    totalUnits: Number(item.totalUnits || 0),
+    remainingUnits: Number(item.remainingUnits ?? item.totalUnits ?? 0),
+    unitLabel: item.unitLabel || "個",
+    dailyUnits: Number(item.dailyUnits || 1),
+    price: Number(item.price || 0),
+    startDate: item.startDate || new Date().toISOString().slice(0, 10),
+    store: item.store || "",
+    memo: item.memo || ""
+  }));
 }
 
 function saveItems() {
@@ -74,7 +92,13 @@ function inferCategory(name = "") {
 }
 
 function daysLeft(item) {
-  return item.dailyUnits > 0 ? item.remainingUnits / item.dailyUnits : 0;
+  return item.dailyUnits > 0 ? Number(item.remainingUnits) / Number(item.dailyUnits) : 0;
+}
+
+function daysText(item) {
+  const d = daysLeft(item);
+  if (!Number.isFinite(d)) return "-";
+  return d >= 10 ? Math.floor(d).toString() : d.toFixed(1);
 }
 
 function endDate(item) {
@@ -103,6 +127,10 @@ function monthlyCost(item) {
   return costPerDay(item) * 30;
 }
 
+function yearlyCost(item) {
+  return costPerDay(item) * 365;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>'"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
 }
@@ -114,22 +142,22 @@ function statusClass(item) {
   return "ok-status";
 }
 
-function renderSummary() {
-  const next = [...items].sort((a, b) => daysLeft(a) - daysLeft(b))[0];
-  const monthly = items.reduce((sum, item) => sum + monthlyCost(item), 0);
-  const yearly = monthly * 12;
-  document.getElementById("summary").innerHTML = `
-    <div class="summary-card"><span>最短終了</span><b>${next ? escapeHtml(shortName(next.name)) : "なし"}</b><p>${next ? longEndDate(next) : ""}</p></div>
-    <div class="summary-card"><span>月額目安</span><b>${yen(monthly)}</b><p>価格入力済みのみ</p></div>
-    <div class="summary-card"><span>年間目安</span><b>${yen(yearly)}</b><p>概算</p></div>
-  `;
-}
-
 function shortName(name) {
   if (name === "Life Extension Two-Per-Day") return "Two-Per-Day";
   if (name === "NOW Psyllium Husk Caps") return "サイリウム";
   if (name.includes("アリナミン")) return "ビタミンC2000";
   return name;
+}
+
+function renderStockStrip() {
+  const sorted = [...items].sort((a, b) => daysLeft(a) - daysLeft(b));
+  document.getElementById("stockStrip").innerHTML = sorted.map(item => `
+    <button class="stock-pill ${statusClass(item)}" type="button" onclick="openDetail('${item.id}')">
+      <strong>${escapeHtml(shortName(item.name))}</strong>
+      <b>${daysText(item)}日</b>
+      <small>${endDate(item)}終了 / ${Number(item.remainingUnits).toLocaleString()}${escapeHtml(item.unitLabel)}</small>
+    </button>
+  `).join("");
 }
 
 function renderCategoryList() {
@@ -154,11 +182,11 @@ function renderCompactItem(item) {
     <button class="compact-item ${statusClass(item)}" type="button" onclick="openDetail('${item.id}')">
       <span class="item-main">
         <strong>${escapeHtml(shortName(item.name))}</strong>
-        <small>${escapeHtml(item.store || "購入先未入力")}</small>
+        <small>${escapeHtml(item.store || "購入先未入力")} / ${escapeHtml(item.category || inferCategory(item.name))}</small>
       </span>
       <span class="item-stock">
-        <b>${Number(item.remainingUnits).toLocaleString()}${escapeHtml(item.unitLabel)}</b>
-        <small>残り${daysLeft(item).toFixed(1)}日・${endDate(item)}</small>
+        <b>${daysText(item)}日</b>
+        <small>${Number(item.remainingUnits).toLocaleString()}${escapeHtml(item.unitLabel)} / ${endDate(item)}</small>
       </span>
     </button>
   `;
@@ -167,14 +195,19 @@ function renderCompactItem(item) {
 function renderDetail() {
   const card = document.getElementById("detailCard");
   const item = items.find(x => x.id === selectedId);
-  if (!item) {
+
+  if (screen !== "detail" || !item) {
     card.hidden = true;
     return;
   }
 
   card.hidden = false;
-  document.getElementById("detailTitle").textContent = shortName(item.name);
-  document.getElementById("detailView").innerHTML = `
+  document.getElementById("detailTitle").textContent = detailMode === "edit" ? "編集" : shortName(item.name);
+  document.getElementById("detailView").innerHTML = detailMode === "edit" ? renderEditForm(item) : renderDetailView(item);
+}
+
+function renderDetailView(item) {
+  return `
     <div class="detail-header">
       <div>
         <p class="full-name">${escapeHtml(item.name)}</p>
@@ -183,14 +216,14 @@ function renderDetail() {
       <button onclick="useDose('${item.id}')">1回分飲んだ</button>
     </div>
     <div class="metrics">
-      <div class="metric"><span>残量</span><b>${Number(item.remainingUnits).toLocaleString()} ${escapeHtml(item.unitLabel)}</b></div>
+      <div class="metric"><span>残り日数</span><b>${daysText(item)}日</b></div>
       <div class="metric"><span>終了予定</span><b>${longEndDate(item)}</b></div>
-      <div class="metric"><span>残り日数</span><b>${daysLeft(item).toFixed(1)}日</b></div>
+      <div class="metric"><span>残量</span><b>${Number(item.remainingUnits).toLocaleString()} ${escapeHtml(item.unitLabel)}</b></div>
       <div class="metric"><span>1日量</span><b>${item.dailyUnits} ${escapeHtml(item.unitLabel)}</b></div>
       <div class="metric"><span>購入価格</span><b>${yen(item.price)}</b></div>
       <div class="metric"><span>1日コスト</span><b>${yen(costPerDay(item))}</b></div>
-      <div class="metric"><span>月額目安</span><b>${yen(monthlyCost(item))}</b></div>
       <div class="metric"><span>購入先</span><b>${escapeHtml(item.store || "未入力")}</b></div>
+      <div class="metric"><span>容量</span><b>${Number(item.totalUnits).toLocaleString()} ${escapeHtml(item.unitLabel)}</b></div>
     </div>
     ${item.memo ? `<p class="memo">${escapeHtml(item.memo)}</p>` : ""}
     <div class="actions">
@@ -200,17 +233,123 @@ function renderDetail() {
   `;
 }
 
+function renderEditForm(item) {
+  return `
+    <form id="inlineEditForm" onsubmit="saveEdit(event, '${item.id}')">
+      <div class="form-grid">
+        <label>商品名<input id="edit-name" required value="${escapeHtml(item.name)}" /></label>
+        <label>カテゴリー
+          <select id="edit-category">
+            ${["ビタミン・ミネラル", "食物繊維", "医薬品・その他"].map(c => `<option value="${c}" ${item.category === c ? "selected" : ""}>${c}</option>`).join("")}
+          </select>
+        </label>
+        <label>容量<input id="edit-totalUnits" required type="number" min="1" step="1" value="${item.totalUnits}" /></label>
+        <label>単位<input id="edit-unitLabel" required value="${escapeHtml(item.unitLabel)}" /></label>
+        <label>1日量<input id="edit-dailyUnits" required type="number" min="0.1" step="0.1" value="${item.dailyUnits}" /></label>
+        <label>現在残量<input id="edit-remainingUnits" required type="number" min="0" step="0.1" value="${item.remainingUnits}" /></label>
+        <label>購入価格<input id="edit-price" type="number" min="0" step="1" value="${item.price || ""}" placeholder="円" /></label>
+        <label>開始日<input id="edit-startDate" type="date" value="${escapeHtml(item.startDate || "")}" /></label>
+        <label>購入先<input id="edit-store" value="${escapeHtml(item.store || "")}" placeholder="iHerb / Amazon" /></label>
+      </div>
+      <label>メモ<textarea id="edit-memo" rows="3">${escapeHtml(item.memo || "")}</textarea></label>
+      <div class="button-row">
+        <button type="submit">保存</button>
+        <button type="button" class="ghost" onclick="cancelEdit()">キャンセル</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderCostScreen() {
+  const costScreen = document.getElementById("costScreen");
+  if (screen !== "cost") {
+    costScreen.hidden = true;
+    return;
+  }
+
+  costScreen.hidden = false;
+  const daily = items.reduce((sum, item) => sum + costPerDay(item), 0);
+  const monthly = daily * 30;
+  const yearly = daily * 365;
+
+  document.getElementById("costView").innerHTML = `
+    <div class="cost-total">
+      <div class="metric"><span>1日</span><b>${yen(daily)}</b></div>
+      <div class="metric"><span>月額目安</span><b>${yen(monthly)}</b></div>
+      <div class="metric"><span>年間目安</span><b>${yen(yearly)}</b></div>
+    </div>
+    ${items.map(item => `
+      <div class="cost-row">
+        <div>
+          <b>${escapeHtml(shortName(item.name))}</b>
+          <small>${yen(item.price)} / ${Number(item.totalUnits).toLocaleString()}${escapeHtml(item.unitLabel)} / 1日${item.dailyUnits}${escapeHtml(item.unitLabel)}</small>
+        </div>
+        <div>
+          <b>${yen(monthlyCost(item))}/月</b>
+          <small>${yen(yearlyCost(item))}/年</small>
+        </div>
+      </div>
+    `).join("")}
+  `;
+}
+
+function renderScreens() {
+  document.getElementById("listScreen").hidden = screen !== "list";
+  document.getElementById("detailCard").hidden = screen !== "detail";
+  document.getElementById("costScreen").hidden = screen !== "cost";
+}
+
 function render() {
-  renderSummary();
+  renderStockStrip();
   renderCategoryList();
+  renderScreens();
   renderDetail();
+  renderCostScreen();
 }
 
 window.openDetail = (id) => {
   selectedId = id;
-  hideForm();
-  renderDetail();
-  document.getElementById("detailCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  screen = "detail";
+  detailMode = "view";
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+window.openEdit = (id) => {
+  selectedId = id;
+  screen = "detail";
+  detailMode = "edit";
+  render();
+};
+
+window.cancelEdit = () => {
+  detailMode = "view";
+  render();
+};
+
+window.saveEdit = (e, id) => {
+  e.preventDefault();
+  const item = {
+    id,
+    name: document.getElementById("edit-name").value.trim(),
+    category: document.getElementById("edit-category").value,
+    totalUnits: Number(document.getElementById("edit-totalUnits").value),
+    unitLabel: document.getElementById("edit-unitLabel").value.trim(),
+    dailyUnits: Number(document.getElementById("edit-dailyUnits").value),
+    remainingUnits: Number(document.getElementById("edit-remainingUnits").value),
+    price: Number(document.getElementById("edit-price").value || 0),
+    startDate: document.getElementById("edit-startDate").value,
+    store: document.getElementById("edit-store").value.trim(),
+    memo: document.getElementById("edit-memo").value.trim()
+  };
+
+  const idx = items.findIndex(x => x.id === id);
+  if (idx >= 0) items[idx] = item;
+  else items.push(item);
+  selectedId = id;
+  detailMode = "view";
+  saveItems();
+  render();
 };
 
 window.useDose = (id) => {
@@ -222,97 +361,60 @@ window.useDose = (id) => {
   render();
 };
 
-window.openEdit = (id) => {
-  const item = items.find(x => x.id === id);
-  if (!item) return;
-  showForm("edit", item);
-};
-
 window.deleteItem = (id) => {
   const item = items.find(x => x.id === id);
   if (!item || !confirm(`${shortName(item.name)}を削除しますか？`)) return;
   items = items.filter(x => x.id !== id);
-  if (selectedId === id) selectedId = null;
+  selectedId = null;
+  screen = "list";
+  detailMode = "view";
   saveItems();
-  hideForm();
   render();
 };
 
-function showForm(mode, item = null) {
-  const formCard = document.getElementById("formCard");
-  const form = document.getElementById("supplementForm");
-  form.reset();
-  document.getElementById("formTitle").textContent = mode === "edit" ? "編集" : "新規登録";
-  document.getElementById("deleteFromForm").hidden = mode !== "edit";
-
-  if (item) {
-    for (const key of ["name", "category", "totalUnits", "unitLabel", "dailyUnits", "remainingUnits", "price", "startDate", "store", "memo"]) {
-      document.getElementById(key).value = item[key] ?? "";
-    }
-    document.getElementById("editId").value = item.id;
-  } else {
-    document.getElementById("editId").value = "";
-    document.getElementById("category").value = "ビタミン・ミネラル";
-    document.getElementById("startDate").value = new Date().toISOString().slice(0, 10);
-  }
-
-  formCard.hidden = false;
-  formCard.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function hideForm() {
-  document.getElementById("formCard").hidden = true;
-  document.getElementById("supplementForm").reset();
-  document.getElementById("editId").value = "";
-}
-
-document.getElementById("newItem").onclick = () => showForm("new");
-document.getElementById("closeDetail").onclick = () => { selectedId = null; renderDetail(); };
-document.getElementById("cancelEdit").onclick = hideForm;
-
-document.getElementById("supplementForm").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const id = document.getElementById("editId").value || crypto.randomUUID();
+document.getElementById("newItem").onclick = () => {
   const item = {
-    id,
-    name: document.getElementById("name").value.trim(),
-    category: document.getElementById("category").value,
-    totalUnits: Number(document.getElementById("totalUnits").value),
-    unitLabel: document.getElementById("unitLabel").value.trim(),
-    dailyUnits: Number(document.getElementById("dailyUnits").value),
-    remainingUnits: Number(document.getElementById("remainingUnits").value),
-    price: Number(document.getElementById("price").value || 0),
-    startDate: document.getElementById("startDate").value,
-    store: document.getElementById("store").value.trim(),
-    memo: document.getElementById("memo").value.trim()
+    id: crypto.randomUUID(),
+    name: "",
+    category: "ビタミン・ミネラル",
+    totalUnits: 1,
+    remainingUnits: 1,
+    unitLabel: "錠",
+    dailyUnits: 1,
+    price: 0,
+    startDate: new Date().toISOString().slice(0, 10),
+    store: "",
+    memo: ""
   };
-
-  const idx = items.findIndex(x => x.id === id);
-  if (idx >= 0) items[idx] = item;
-  else items.push(item);
-
-  selectedId = id;
-  saveItems();
-  hideForm();
+  items.push(item);
+  selectedId = item.id;
+  screen = "detail";
+  detailMode = "edit";
   render();
-});
-
-document.getElementById("deleteFromForm").onclick = () => {
-  const id = document.getElementById("editId").value;
-  if (id) window.deleteItem(id);
+  window.scrollTo({ top: 0, behavior: "smooth" });
 };
+
+document.getElementById("closeDetail").onclick = () => {
+  if (detailMode === "edit") detailMode = "view";
+  else { selectedId = null; screen = "list"; }
+  render();
+};
+
+document.getElementById("openCost").onclick = () => { screen = "cost"; render(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+document.getElementById("closeCost").onclick = () => { screen = "list"; render(); };
 
 document.getElementById("restoreDefault").onclick = () => {
   if (!confirm("初期データに戻しますか？現在の登録内容は消えます。")) return;
   items = structuredClone(defaultItems);
   selectedId = null;
+  screen = "list";
+  detailMode = "view";
   saveItems();
-  hideForm();
   render();
 };
 
 document.getElementById("exportJson").onclick = () => {
-  const blob = new Blob([JSON.stringify(items, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ app: "SuppLog", version: APP_VERSION, items }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -321,5 +423,25 @@ document.getElementById("exportJson").onclick = () => {
   URL.revokeObjectURL(url);
 };
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  const registration = await navigator.serviceWorker.register(`service-worker.js?v=${APP_VERSION}`);
+  registration.addEventListener("updatefound", () => {
+    const worker = registration.installing;
+    if (!worker) return;
+    worker.addEventListener("statechange", () => {
+      if (worker.state === "installed" && navigator.serviceWorker.controller) {
+        worker.postMessage({ type: "SKIP_WAITING" });
+      }
+    });
+  });
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!sessionStorage.getItem("supplog-reloaded")) {
+      sessionStorage.setItem("supplog-reloaded", "1");
+      location.reload();
+    }
+  });
+}
+
+registerServiceWorker();
 render();

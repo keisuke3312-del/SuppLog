@@ -3,26 +3,32 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#111827" />
+  <meta name="theme-color" content="#0f172a" />
   <title>SuppLog</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json?v=3.0.0" />
+  <link rel="stylesheet" href="style.css?v=3.0.0" />
 </head>
 <body>
   <header class="app-header">
     <div>
       <h1>SuppLog</h1>
-      <p>サプリの在庫・費用・終了予定を管理</p>
+      <p>在庫・終了予定・費用を管理</p>
     </div>
-    <button id="exportJson" class="ghost">バックアップ</button>
+    <div class="header-actions">
+      <button id="openCost" class="ghost">費用</button>
+      <button id="exportJson" class="ghost">バックアップ</button>
+    </div>
   </header>
 
   <main>
-    <section class="summary-grid" id="summary"></section>
+    <section class="stock-strip" id="stockStrip" aria-label="サプリ別残り日数"></section>
 
-    <section class="card list-card">
+    <section class="card list-card" id="listScreen">
       <div class="section-title">
-        <h2>サプリ一覧</h2>
+        <div>
+          <h2>サプリ一覧</h2>
+          <p class="section-caption">タップで詳細・編集</p>
+        </div>
         <button id="newItem" class="ghost">＋追加</button>
       </div>
       <div id="categoryList" class="category-list"></div>
@@ -31,41 +37,20 @@
     <section class="card detail-card" id="detailCard" hidden>
       <div class="section-title">
         <h2 id="detailTitle">詳細</h2>
-        <button id="closeDetail" class="ghost">閉じる</button>
+        <button id="closeDetail" class="ghost">戻る</button>
       </div>
       <div id="detailView"></div>
     </section>
 
-    <section class="card form-card" id="formCard" hidden>
+    <section class="card cost-card" id="costScreen" hidden>
       <div class="section-title">
-        <h2 id="formTitle">登録</h2>
-        <button id="cancelEdit" class="ghost">キャンセル</button>
+        <div>
+          <h2>費用計算</h2>
+          <p class="section-caption">価格入力済みのみ計算</p>
+        </div>
+        <button id="closeCost" class="ghost">戻る</button>
       </div>
-      <form id="supplementForm">
-        <input type="hidden" id="editId" />
-        <div class="form-grid">
-          <label>商品名<input id="name" required placeholder="例：Two-Per-Day" /></label>
-          <label>カテゴリー
-            <select id="category">
-              <option value="ビタミン・ミネラル">ビタミン・ミネラル</option>
-              <option value="食物繊維">食物繊維</option>
-              <option value="医薬品・その他">医薬品・その他</option>
-            </select>
-          </label>
-          <label>容量<input id="totalUnits" required type="number" min="1" step="1" /></label>
-          <label>単位<input id="unitLabel" required placeholder="錠 / カプセル" /></label>
-          <label>1日量<input id="dailyUnits" required type="number" min="0.1" step="0.1" /></label>
-          <label>現在残量<input id="remainingUnits" required type="number" min="0" step="0.1" /></label>
-          <label>購入価格<input id="price" type="number" min="0" step="1" placeholder="円" /></label>
-          <label>開始日<input id="startDate" type="date" /></label>
-          <label>購入先<input id="store" placeholder="iHerb / Amazon" /></label>
-        </div>
-        <label>メモ<textarea id="memo" rows="3" placeholder="例：次回は360カプセル版"></textarea></label>
-        <div class="button-row">
-          <button type="submit">保存</button>
-          <button type="button" id="deleteFromForm" class="ghost danger">削除</button>
-        </div>
-      </form>
+      <div id="costView"></div>
     </section>
 
     <section class="danger-zone">
@@ -75,8 +60,9 @@
 
   <footer>
     <p>データはこのiPhone/ブラウザ内に保存されます。</p>
+    <p class="version">Version: v3.0.0</p>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3.0.0"></script>
 </body>
 </html>

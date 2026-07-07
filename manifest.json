@@ -1,11 +1,11 @@
 {
   "name": "SuppLog",
   "short_name": "SuppLog",
-  "start_url": "./index.html",
+  "start_url": "./index.html?v=3.0.0",
   "display": "standalone",
-  "background_color": "#111827",
-  "theme_color": "#111827",
+  "background_color": "#0b1020",
+  "theme_color": "#0f172a",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }
