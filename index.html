@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111827" />
+  <title>サプリ在庫管理</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>サプリ在庫管理</h1>
+      <p>残量・終了日・費用を端末内だけで管理</p>
+    </div>
+    <button id="exportJson" class="ghost">バックアップ</button>
+  </header>
+
+  <main>
+    <section class="summary-grid" id="summary"></section>
+
+    <section class="card">
+      <h2>登録・編集</h2>
+      <form id="supplementForm">
+        <input type="hidden" id="editId" />
+        <div class="form-grid">
+          <label>商品名<input id="name" required placeholder="例：Two-Per-Day" /></label>
+          <label>容量<input id="totalUnits" required type="number" min="1" step="1" /></label>
+          <label>単位<input id="unitLabel" required placeholder="錠 / カプセル" /></label>
+          <label>1日量<input id="dailyUnits" required type="number" min="0.1" step="0.1" /></label>
+          <label>現在残量<input id="remainingUnits" required type="number" min="0" step="0.1" /></label>
+          <label>購入価格<input id="price" type="number" min="0" step="1" placeholder="円" /></label>
+          <label>開始日<input id="startDate" type="date" /></label>
+          <label>購入先<input id="store" placeholder="iHerb / Amazon" /></label>
+        </div>
+        <label>メモ<textarea id="memo" rows="2" placeholder="例：次回は360カプセル版"></textarea></label>
+        <div class="button-row">
+          <button type="submit">保存</button>
+          <button type="button" id="resetForm" class="ghost">入力リセット</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h2>在庫一覧</h2>
+        <button id="restoreDefault" class="danger ghost">初期データに戻す</button>
+      </div>
+      <div id="list" class="list"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>データはこのiPhone/ブラウザ内に保存されます。GitHub Pagesで無料運用できます。</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

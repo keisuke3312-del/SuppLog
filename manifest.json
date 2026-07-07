@@ -1,0 +1,11 @@
+{
+  "name": "サプリ在庫管理",
+  "short_name": "サプリ管理",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#111827",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
