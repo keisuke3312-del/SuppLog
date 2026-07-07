@@ -5,23 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0f172a" />
   <title>SuppLog</title>
-  <link rel="manifest" href="manifest.json?v=4.0.0" />
-  <link rel="stylesheet" href="style.css?v=4.0.0" />
+  <link rel="manifest" href="manifest.json?v=5.0.0" />
+  <link rel="stylesheet" href="style.css?v=5.0.0" />
 </head>
 <body>
   <header class="app-header">
     <div>
       <h1>SuppLog</h1>
-      <p>在庫・終了予定・費用を管理</p>
+      <p>在庫・飲み方・栄養を管理</p>
     </div>
     <div class="header-actions">
+      <button id="openNutrition" class="ghost">栄養</button>
       <button id="openCost" class="ghost">費用</button>
       <button id="exportJson" class="ghost">バックアップ</button>
     </div>
   </header>
 
   <main>
+    <section class="alert-box" id="alertBox" aria-label="在庫警告"></section>
     <section class="stock-strip" id="stockStrip" aria-label="サプリ別残り日数"></section>
+
+    <section class="routine-card" id="routineCard" aria-label="飲み方"></section>
 
     <section class="card list-card" id="listScreen">
       <div class="section-title">
@@ -53,6 +57,17 @@
       <div id="costView"></div>
     </section>
 
+    <section class="card nutrition-card" id="nutritionScreen" hidden>
+      <div class="section-title">
+        <div>
+          <h2>栄養情報</h2>
+          <p class="section-caption">現在のサプリ構成から計算</p>
+        </div>
+        <button id="closeNutrition" class="ghost">戻る</button>
+      </div>
+      <div id="nutritionView"></div>
+    </section>
+
     <section class="danger-zone">
       <button id="restoreDefault" class="danger ghost">初期データに戻す</button>
     </section>
@@ -60,9 +75,9 @@
 
   <footer>
     <p>データはこのiPhone/ブラウザ内に保存されます。</p>
-    <p class="version">Version: v4.0.0</p>
+    <p class="version">Version: v5.0.0</p>
   </footer>
 
-  <script src="app.js?v=4.0.0"></script>
+  <script src="app.js?v=5.0.0"></script>
 </body>
 </html>
