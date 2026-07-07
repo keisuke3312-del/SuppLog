@@ -1,4 +1,4 @@
-const APP_VERSION = "v3.0.0";
+const APP_VERSION = "v4.0.0";
 const STORAGE_KEY = "supplog-v3";
 const MIGRATION_KEYS = ["supplog-v2", "supplement-stock-v1"];
 
@@ -142,6 +142,20 @@ function statusClass(item) {
   return "ok-status";
 }
 
+function statusIcon(item) {
+  const d = daysLeft(item);
+  if (d <= 14) return "🚨";
+  if (d <= 30) return "⚠️";
+  return "✅";
+}
+
+function statusLabel(item) {
+  const d = daysLeft(item);
+  if (d <= 14) return "要補充";
+  if (d <= 30) return "少なめ";
+  return "余裕あり";
+}
+
 function shortName(name) {
   if (name === "Life Extension Two-Per-Day") return "Two-Per-Day";
   if (name === "NOW Psyllium Husk Caps") return "サイリウム";
@@ -153,9 +167,11 @@ function renderStockStrip() {
   const sorted = [...items].sort((a, b) => daysLeft(a) - daysLeft(b));
   document.getElementById("stockStrip").innerHTML = sorted.map(item => `
     <button class="stock-pill ${statusClass(item)}" type="button" onclick="openDetail('${item.id}')">
-      <strong>${escapeHtml(shortName(item.name))}</strong>
-      <b>${daysText(item)}日</b>
-      <small>${endDate(item)}終了 / ${Number(item.remainingUnits).toLocaleString()}${escapeHtml(item.unitLabel)}</small>
+      <span class="status-icon" aria-hidden="true">${statusIcon(item)}</span>
+      <span class="stock-name">${escapeHtml(shortName(item.name))}</span>
+      <span class="stock-days">${daysText(item)}日</span>
+      <span class="status-badge">${statusLabel(item)}</span>
+      <span class="stock-meta">${endDate(item)}終了 / ${Number(item.remainingUnits).toLocaleString()}${escapeHtml(item.unitLabel)}</span>
     </button>
   `).join("");
 }
@@ -180,6 +196,7 @@ function renderCategoryList() {
 function renderCompactItem(item) {
   return `
     <button class="compact-item ${statusClass(item)}" type="button" onclick="openDetail('${item.id}')">
+      <span class="item-status" aria-hidden="true">${statusIcon(item)}</span>
       <span class="item-main">
         <strong>${escapeHtml(shortName(item.name))}</strong>
         <small>${escapeHtml(item.store || "購入先未入力")} / ${escapeHtml(item.category || inferCategory(item.name))}</small>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "supplog-cache-v3.0.0";
+const CACHE_NAME = "supplog-cache-v4.0.0";
 const ASSETS = [
   "./",
   "./index.html?v=3.0.0",
