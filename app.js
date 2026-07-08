@@ -1,4 +1,4 @@
-const APP_VERSION = "v6.0.0";
+const APP_VERSION = "v6.1.0";
 const STORAGE_KEY = "supplog-v3";
 const MIGRATION_KEYS = ["supplog-v2", "supplement-stock-v1"];
 
@@ -14,7 +14,7 @@ const defaultItems = [
     price: 0,
     startDate: "2026-07-07",
     store: "iHerb",
-    alertDays: 30,
+    alertDays: 14,
     lastAutoDate: "2026-07-07",
     memo: "7/7夜に2カプセル使用済み。次回は360カプセル版候補。"
   },
@@ -29,7 +29,7 @@ const defaultItems = [
     price: 0,
     startDate: "2026-07-07",
     store: "iHerb",
-    alertDays: 30,
+    alertDays: 14,
     lastAutoDate: "2026-07-07",
     memo: "7/7夜に1錠使用済み。"
   },
@@ -132,9 +132,8 @@ function dateDiffDays(fromIso, toIso = todayIso()) {
 }
 
 function defaultAlertDays(item = {}) {
-  const store = String(item.store || "").toLowerCase();
-  const name = String(item.name || "").toLowerCase();
-  if (store.includes("iherb") || name.includes("two-per-day") || name.includes("psyllium")) return 30;
+  // 通知は早すぎるとノイズになるため、基本は残り14日以下。
+  // iHerb商品も1週間前注文で概ね間に合う前提だが、余裕を見て2週間前から表示する。
   return 14;
 }
 
@@ -233,29 +232,28 @@ function escapeHtml(s) {
 
 function statusClass(item) {
   const d = daysLeft(item);
-  const alert = Number(item.alertDays ?? 30);
-  if (d <= 7) return "critical-status";
-  if (d <= alert) return "danger-status";
-  if (d <= alert + 14) return "warn-status";
+  if (d <= 0) return "critical-status";
+  if (d <= 7) return "danger-status";
+  if (d <= 14) return "warn-status";
+  if (d <= 30) return "caution-status";
   return "ok-status";
 }
 
 function statusIcon(item) {
   const d = daysLeft(item);
-  const alert = Number(item.alertDays ?? 30);
-  if (d <= 7) return "‼";
-  if (d <= alert) return "!";
-  if (d <= alert + 14) return "△";
+  if (d <= 0) return "×";
+  if (d <= 7) return "!";
+  if (d <= 14) return "△";
+  if (d <= 30) return "○";
   return "✓";
 }
 
 function statusLabel(item) {
   const d = daysLeft(item);
-  const alert = Number(item.alertDays ?? 30);
   if (d <= 0) return "在庫切れ";
-  if (d <= 7) return "至急補充";
-  if (d <= alert) return "補充推奨";
-  if (d <= alert + 14) return "そろそろ";
+  if (d <= 7) return "補充推奨";
+  if (d <= 14) return "そろそろ";
+  if (d <= 30) return "1か月未満";
   return "余裕あり";
 }
 
@@ -311,7 +309,7 @@ function replenishAmount(item) {
 }
 
 function needsAlert(item) {
-  return daysLeft(item) <= Number(item.alertDays ?? 30);
+  return daysLeft(item) <= Number(item.alertDays ?? 14);
 }
 
 function collectNutrition() {
@@ -467,7 +465,7 @@ function renderDetailView(item) {
       <div class="metric"><span>購入価格</span><b>${yen(item.price)}</b></div>
       <div class="metric"><span>1日コスト</span><b>${yen(costPerDay(item))}</b></div>
       <div class="metric"><span>購入先</span><b>${escapeHtml(item.store || "未入力")}</b></div>
-      <div class="metric"><span>アラート</span><b>残り${item.alertDays || 30}日前</b></div>
+      <div class="metric"><span>通知開始</span><b>残り${item.alertDays || 14}日前</b></div>
       <div class="metric"><span>自動消費更新</span><b>${escapeHtml(item.lastAutoDate || "未設定")}</b></div>
       <div class="metric"><span>容量</span><b>${Number(item.totalUnits).toLocaleString()} ${escapeHtml(item.unitLabel)}</b></div>
     </div>
@@ -498,7 +496,7 @@ function renderEditForm(item) {
         <label>購入価格<input id="edit-price" type="number" min="0" step="1" value="${item.price || ""}" placeholder="円" /></label>
         <label>開始日<input id="edit-startDate" type="date" value="${escapeHtml(item.startDate || "")}" /></label>
         <label>購入先<input id="edit-store" value="${escapeHtml(item.store || "")}" placeholder="iHerb / Amazon" /></label>
-        <label>補充アラート（日数）<input id="edit-alertDays" type="number" min="1" step="1" value="${item.alertDays || 30}" /></label>
+        <label>通知開始（日数）<input id="edit-alertDays" type="number" min="1" step="1" value="${item.alertDays || 14}" /></label>
         <label>自動消費の最終更新日<input id="edit-lastAutoDate" type="date" value="${escapeHtml(item.lastAutoDate || todayIso())}" /></label>
       </div>
       <label>メモ<textarea id="edit-memo" rows="3">${escapeHtml(item.memo || "")}</textarea></label>
@@ -638,7 +636,7 @@ window.saveEdit = (e, id) => {
     price: Number(document.getElementById("edit-price").value || 0),
     startDate: document.getElementById("edit-startDate").value,
     store: document.getElementById("edit-store").value.trim(),
-    alertDays: Number(document.getElementById("edit-alertDays").value || 30),
+    alertDays: Number(document.getElementById("edit-alertDays").value || 14),
     lastAutoDate: document.getElementById("edit-lastAutoDate").value || todayIso(),
     memo: document.getElementById("edit-memo").value.trim()
   };
@@ -751,8 +749,8 @@ async function registerServiceWorker() {
     });
   });
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!sessionStorage.getItem("supplog-reloaded-v6")) {
-      sessionStorage.setItem("supplog-reloaded-v6", "1");
+    if (!sessionStorage.getItem("supplog-reloaded-v61")) {
+      sessionStorage.setItem("supplog-reloaded-v61", "1");
       location.reload();
     }
   });
