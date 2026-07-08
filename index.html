@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0f172a" />
   <title>SuppLog</title>
-  <link rel="manifest" href="manifest.json?v=5.0.0" />
-  <link rel="stylesheet" href="style.css?v=5.0.0" />
+  <link rel="manifest" href="manifest.json?v=6.0.0" />
+  <link rel="stylesheet" href="style.css?v=6.0.0" />
 </head>
 <body>
   <header class="app-header">
@@ -22,7 +22,8 @@
   </header>
 
   <main>
-    <section class="alert-box" id="alertBox" aria-label="在庫警告"></section>
+    <section class="system-notice" id="systemNotice" hidden></section>
+    <section class="alert-box" id="alertBox" aria-label="補充アラート"></section>
     <section class="stock-strip" id="stockStrip" aria-label="サプリ別残り日数"></section>
 
     <section class="routine-card" id="routineCard" aria-label="飲み方"></section>
@@ -75,9 +76,9 @@
 
   <footer>
     <p>データはこのiPhone/ブラウザ内に保存されます。</p>
-    <p class="version">Version: v5.0.0</p>
+    <p class="version">Version: v6.0.0</p>
   </footer>
 
-  <script src="app.js?v=5.0.0"></script>
+  <script src="app.js?v=6.0.0"></script>
 </body>
 </html>

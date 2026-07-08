@@ -1,4 +1,4 @@
-const APP_VERSION = "v5.0.0";
+const APP_VERSION = "v6.0.0";
 const STORAGE_KEY = "supplog-v3";
 const MIGRATION_KEYS = ["supplog-v2", "supplement-stock-v1"];
 
@@ -14,6 +14,8 @@ const defaultItems = [
     price: 0,
     startDate: "2026-07-07",
     store: "iHerb",
+    alertDays: 30,
+    lastAutoDate: "2026-07-07",
     memo: "7/7夜に2カプセル使用済み。次回は360カプセル版候補。"
   },
   {
@@ -27,6 +29,8 @@ const defaultItems = [
     price: 0,
     startDate: "2026-07-07",
     store: "iHerb",
+    alertDays: 30,
+    lastAutoDate: "2026-07-07",
     memo: "7/7夜に1錠使用済み。"
   },
   {
@@ -40,6 +44,8 @@ const defaultItems = [
     price: 0,
     startDate: "2026-07-07",
     store: "Amazon等",
+    alertDays: 14,
+    lastAutoDate: "2026-07-07",
     memo: "1日4錠。朝2・夜2。"
   }
 ];
@@ -110,6 +116,27 @@ let items = loadItems();
 let selectedId = null;
 let screen = "list";
 let detailMode = "view";
+let autoAdjustNotice = "";
+
+function todayIso() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+function dateDiffDays(fromIso, toIso = todayIso()) {
+  const from = new Date(`${fromIso}T00:00:00`);
+  const to = new Date(`${toIso}T00:00:00`);
+  const diff = Math.floor((to - from) / 86400000);
+  return Number.isFinite(diff) ? Math.max(0, diff) : 0;
+}
+
+function defaultAlertDays(item = {}) {
+  const store = String(item.store || "").toLowerCase();
+  const name = String(item.name || "").toLowerCase();
+  if (store.includes("iherb") || name.includes("two-per-day") || name.includes("psyllium")) return 30;
+  return 14;
+}
 
 function loadItems() {
   try {
@@ -139,8 +166,10 @@ function normalizeItems(raw) {
     unitLabel: item.unitLabel || "個",
     dailyUnits: Number(item.dailyUnits || 1),
     price: Number(item.price || 0),
-    startDate: item.startDate || new Date().toISOString().slice(0, 10),
+    startDate: item.startDate || todayIso(),
     store: item.store || "",
+    alertDays: Number(item.alertDays ?? defaultAlertDays(item)),
+    lastAutoDate: item.lastAutoDate || item.startDate || todayIso(),
     memo: item.memo || ""
   }));
 }
@@ -204,26 +233,29 @@ function escapeHtml(s) {
 
 function statusClass(item) {
   const d = daysLeft(item);
+  const alert = Number(item.alertDays ?? 30);
   if (d <= 7) return "critical-status";
-  if (d <= 14) return "danger-status";
-  if (d <= 30) return "warn-status";
+  if (d <= alert) return "danger-status";
+  if (d <= alert + 14) return "warn-status";
   return "ok-status";
 }
 
 function statusIcon(item) {
   const d = daysLeft(item);
+  const alert = Number(item.alertDays ?? 30);
   if (d <= 7) return "‼";
-  if (d <= 14) return "!";
-  if (d <= 30) return "△";
+  if (d <= alert) return "!";
+  if (d <= alert + 14) return "△";
   return "✓";
 }
 
 function statusLabel(item) {
   const d = daysLeft(item);
+  const alert = Number(item.alertDays ?? 30);
   if (d <= 0) return "在庫切れ";
-  if (d <= 7) return "すぐ補充";
-  if (d <= 14) return "要補充";
-  if (d <= 30) return "少なめ";
+  if (d <= 7) return "至急補充";
+  if (d <= alert) return "補充推奨";
+  if (d <= alert + 14) return "そろそろ";
   return "余裕あり";
 }
 
@@ -249,6 +281,39 @@ function nutrientRowsForItem(item) {
   });
 }
 
+function applyAutoConsumption() {
+  const today = todayIso();
+  let changed = false;
+  let lines = [];
+  for (const item of items) {
+    if (!item.lastAutoDate) item.lastAutoDate = item.startDate || today;
+    const days = dateDiffDays(item.lastAutoDate, today);
+    if (days <= 0) continue;
+    const consume = Number(item.dailyUnits || 0) * days;
+    if (consume > 0) {
+      const before = Number(item.remainingUnits || 0);
+      item.remainingUnits = Math.max(0, Number((before - consume).toFixed(2)));
+      lines.push(`${shortName(item.name)} -${formatAmount(consume)}${item.unitLabel}`);
+      changed = true;
+    }
+    item.lastAutoDate = today;
+  }
+  if (changed) {
+    saveItems();
+    autoAdjustNotice = `${dateDiffDays(items[0]?.lastAutoDate || today, today)}日分の自動消費を反映しました。`;
+    // 上の計算は保存後0日になるため、実表示は各サプリの減算内容を出す
+    autoAdjustNotice = `自動消費を反映：${lines.join(" / ")}`;
+  }
+}
+
+function replenishAmount(item) {
+  return Math.max(0, Number(item.totalUnits || 0) - Number(item.remainingUnits || 0));
+}
+
+function needsAlert(item) {
+  return daysLeft(item) <= Number(item.alertDays ?? 30);
+}
+
 function collectNutrition() {
   const map = new Map();
   for (const item of items) {
@@ -268,8 +333,20 @@ function collectNutrition() {
   });
 }
 
+function renderSystemNotice() {
+  const el = document.getElementById("systemNotice");
+  if (!el) return;
+  if (!autoAdjustNotice || screen !== "list") {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = `<span>${escapeHtml(autoAdjustNotice)}</span><button class="ghost" onclick="dismissNotice()">閉じる</button>`;
+}
+
 function renderAlertBox() {
-  const alerts = [...items].filter(item => daysLeft(item) <= 30).sort((a, b) => daysLeft(a) - daysLeft(b));
+  const alerts = [...items].filter(needsAlert).sort((a, b) => daysLeft(a) - daysLeft(b));
   const box = document.getElementById("alertBox");
   if (!alerts.length || screen !== "list") {
     box.innerHTML = "";
@@ -278,12 +355,12 @@ function renderAlertBox() {
   }
   box.hidden = false;
   box.innerHTML = `
-    <div class="alert-title">在庫警告</div>
+    <div class="alert-title">補充アラート</div>
     <div class="alert-list">
       ${alerts.map(item => `
         <button class="alert-item ${statusClass(item)}" onclick="openDetail('${item.id}')">
           <span class="alert-icon">${statusIcon(item)}</span>
-          <span><b>${escapeHtml(shortName(item.name))}</b><small>${statusLabel(item)} / 残り${daysText(item)}日 / ${endDate(item)}終了</small></span>
+          <span><b>${escapeHtml(shortName(item.name))}</b><small>${statusLabel(item)} / 残り${daysText(item)}日 / アラート${item.alertDays || 30}日前設定</small></span>
         </button>
       `).join("")}
     </div>
@@ -298,7 +375,7 @@ function renderStockStrip() {
       <span class="stock-name">${escapeHtml(shortName(item.name))}</span>
       <span class="stock-days">${daysText(item)}日</span>
       <span class="status-badge">${statusLabel(item)}</span>
-      <span class="stock-meta">${endDate(item)}終了 / ${Number(item.remainingUnits).toLocaleString()}${escapeHtml(item.unitLabel)}</span>
+      <span class="stock-meta">残量 ${Number(item.remainingUnits).toLocaleString()}${escapeHtml(item.unitLabel)} / 1日${item.dailyUnits}${escapeHtml(item.unitLabel)}</span>
     </button>
   `).join("");
 }
@@ -379,7 +456,7 @@ function renderDetailView(item) {
         <p class="full-name">${escapeHtml(item.name)}</p>
         <span class="badge">${escapeHtml(item.category || inferCategory(item.name))}</span>
       </div>
-      <button onclick="useDose('${item.id}')">1回分飲んだ</button>
+      <button onclick="replenishItem('${item.id}')">満タン補充</button>
     </div>
     <div class="metrics">
       <div class="metric"><span>残り日数</span><b>${daysText(item)}日</b></div>
@@ -390,10 +467,14 @@ function renderDetailView(item) {
       <div class="metric"><span>購入価格</span><b>${yen(item.price)}</b></div>
       <div class="metric"><span>1日コスト</span><b>${yen(costPerDay(item))}</b></div>
       <div class="metric"><span>購入先</span><b>${escapeHtml(item.store || "未入力")}</b></div>
+      <div class="metric"><span>アラート</span><b>残り${item.alertDays || 30}日前</b></div>
+      <div class="metric"><span>自動消費更新</span><b>${escapeHtml(item.lastAutoDate || "未設定")}</b></div>
       <div class="metric"><span>容量</span><b>${Number(item.totalUnits).toLocaleString()} ${escapeHtml(item.unitLabel)}</b></div>
     </div>
     ${item.memo ? `<p class="memo">${escapeHtml(item.memo)}</p>` : ""}
     <div class="actions">
+      <button class="ghost" onclick="adjustStock('${item.id}', -1)">−1</button>
+      <button class="ghost" onclick="adjustStock('${item.id}', 1)">＋1</button>
       <button class="ghost" onclick="openEdit('${item.id}')">編集</button>
       <button class="ghost danger" onclick="deleteItem('${item.id}')">削除</button>
     </div>
@@ -417,6 +498,8 @@ function renderEditForm(item) {
         <label>購入価格<input id="edit-price" type="number" min="0" step="1" value="${item.price || ""}" placeholder="円" /></label>
         <label>開始日<input id="edit-startDate" type="date" value="${escapeHtml(item.startDate || "")}" /></label>
         <label>購入先<input id="edit-store" value="${escapeHtml(item.store || "")}" placeholder="iHerb / Amazon" /></label>
+        <label>補充アラート（日数）<input id="edit-alertDays" type="number" min="1" step="1" value="${item.alertDays || 30}" /></label>
+        <label>自動消費の最終更新日<input id="edit-lastAutoDate" type="date" value="${escapeHtml(item.lastAutoDate || todayIso())}" /></label>
       </div>
       <label>メモ<textarea id="edit-memo" rows="3">${escapeHtml(item.memo || "")}</textarea></label>
       <div class="button-row">
@@ -509,6 +592,7 @@ function renderScreens() {
 }
 
 function render() {
+  renderSystemNotice();
   renderAlertBox();
   renderStockStrip();
   renderRoutineCard();
@@ -518,6 +602,8 @@ function render() {
   renderCostScreen();
   renderNutritionScreen();
 }
+
+window.dismissNotice = () => { autoAdjustNotice = ""; render(); };
 
 window.openDetail = (id) => {
   selectedId = id;
@@ -552,6 +638,8 @@ window.saveEdit = (e, id) => {
     price: Number(document.getElementById("edit-price").value || 0),
     startDate: document.getElementById("edit-startDate").value,
     store: document.getElementById("edit-store").value.trim(),
+    alertDays: Number(document.getElementById("edit-alertDays").value || 30),
+    lastAutoDate: document.getElementById("edit-lastAutoDate").value || todayIso(),
     memo: document.getElementById("edit-memo").value.trim()
   };
 
@@ -564,11 +652,22 @@ window.saveEdit = (e, id) => {
   render();
 };
 
-window.useDose = (id) => {
+window.adjustStock = (id, amount) => {
   const item = items.find(x => x.id === id);
   if (!item) return;
-  const perDose = item.dailyUnits / 2;
-  item.remainingUnits = Math.max(0, Number((Number(item.remainingUnits) - perDose).toFixed(2)));
+  item.remainingUnits = Math.max(0, Number((Number(item.remainingUnits) + Number(amount)).toFixed(2)));
+  saveItems();
+  render();
+};
+
+window.replenishItem = (id) => {
+  const item = items.find(x => x.id === id);
+  if (!item) return;
+  const add = replenishAmount(item);
+  const label = add > 0 ? `${formatAmount(add)}${item.unitLabel}追加して` : "";
+  if (!confirm(`${shortName(item.name)}を${label}満タンにしますか？`)) return;
+  item.remainingUnits = Number(item.totalUnits || item.remainingUnits || 0);
+  item.lastAutoDate = todayIso();
   saveItems();
   render();
 };
@@ -596,6 +695,8 @@ document.getElementById("newItem").onclick = () => {
     price: 0,
     startDate: new Date().toISOString().slice(0, 10),
     store: "",
+    alertDays: 14,
+    lastAutoDate: todayIso(),
     memo: ""
   };
   items.push(item);
@@ -650,12 +751,13 @@ async function registerServiceWorker() {
     });
   });
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!sessionStorage.getItem("supplog-reloaded-v5")) {
-      sessionStorage.setItem("supplog-reloaded-v5", "1");
+    if (!sessionStorage.getItem("supplog-reloaded-v6")) {
+      sessionStorage.setItem("supplog-reloaded-v6", "1");
       location.reload();
     }
   });
 }
 
+applyAutoConsumption();
 registerServiceWorker();
 render();

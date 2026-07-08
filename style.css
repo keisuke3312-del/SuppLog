@@ -174,3 +174,20 @@ button.compact-item { background-color: var(--soft); }
   .header-actions { max-width:54%; gap:6px; }
   .header-actions button { padding:9px 10px; font-size:12px; }
 }
+
+/* v6: automatic consumption + replenish alert */
+.system-notice {
+  margin-bottom:12px;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:10px 12px;
+  display:flex;
+  gap:10px;
+  justify-content:space-between;
+  align-items:center;
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
+}
+.system-notice span { color:var(--text); font-size:12px; font-weight:850; line-height:1.45; }
+.system-notice button { padding:7px 9px; font-size:12px; white-space:nowrap; }
+.alert-title::after { content:"（iHerbは余裕を見て早めに表示）"; display:block; margin-top:2px; color:var(--muted); font-size:11px; font-weight:800; }
